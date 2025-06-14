@@ -1,4 +1,3 @@
-// ⛳️ Importing
 import React, { useState, useEffect, useCallback } from 'react';
 import { Line } from 'react-chartjs-2';
 import {
@@ -12,57 +11,77 @@ import {
 } from 'chart.js';
 import Header from '../components/Header';
 import Footer from '../components/Footer';
+import GradientButton from '../components/Button';
+import FlagDropdown from '../components/FlagDropdown';
 import { FaExchangeAlt, FaChartLine } from 'react-icons/fa';
 
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
 
-// ✅ Currency codes list (unchanged)
-const currencyCodes = [/* your full currency array */];
-
 export default function ConversionPage() {
   const [activeTab, setActiveTab] = useState('convert');
+
+  // Conversion section states
   const [amount, setAmount] = useState(1);
   const [fromCurrency, setFromCurrency] = useState('USD');
   const [toCurrency, setToCurrency] = useState('INR');
   const [convertedAmount, setConvertedAmount] = useState(null);
+
+  // Trends section states
+  const [frankfurterCurrencies, setFrankfurterCurrencies] = useState([]);
+  const [trendFrom, setTrendFrom] = useState('USD');
+  const [trendTo, setTrendTo] = useState('INR');
+
+  // Shared states
   const [chartData, setChartData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
 
-  // 🌐 Load API key and base URL from environment variables
   const API_KEY = process.env.REACT_APP_EXCHANGE_API_KEY;
-  const BASE_URL = process.env.REACT_APP_BASE_URL;
 
-  // 🔁 Conversion fetch
+  // Fetch Frankfurter supported currencies once on mount
+  useEffect(() => {
+    fetch('https://api.frankfurter.app/currencies')
+      .then(res => res.json())
+      .then(data => {
+        const codes = Object.keys(data);
+        setFrankfurterCurrencies(codes);
+        if (!codes.includes(trendFrom)) setTrendFrom(codes[0]);
+        if (!codes.includes(trendTo)) setTrendTo(codes[1]);
+      })
+      .catch(() => setFrankfurterCurrencies(['USD', 'EUR', 'INR', 'GBP', 'JPY', 'AUD']));
+    // eslint-disable-next-line
+  }, []);
+
+  // Conversion fetch
   const fetchConversion = useCallback(async () => {
     if (!amount || amount <= 0) return;
     setLoading(true);
     try {
-      const url = `${BASE_URL}/${API_KEY}/pair/${fromCurrency}/${toCurrency}/${amount}`;
+      const url = `https://v6.exchangerate-api.com/v6/${API_KEY}/latest/${fromCurrency}`;
       const response = await fetch(url);
+      if (!response.ok) throw new Error(`API error: ${response.status}`);
       const data = await response.json();
-      console.log("Conversion API Response:", data);
 
-      if (data.result && data.conversion_result !== null) {
-        setConvertedAmount(data.conversion_result);
-        setError(null);
-      } else if (data.conversion_rate) {
-        // fallback for some response structures
-        setConvertedAmount(data.conversion_rate * amount);
-        setError(null);
+      if (data.result === 'success' && data.conversion_rates) {
+        const rate = data.conversion_rates[toCurrency];
+        if (rate) {
+          setConvertedAmount(rate * amount);
+          setError(null);
+        } else {
+          throw new Error(`Exchange rate not found for ${toCurrency}`);
+        }
       } else {
-        throw new Error('Invalid conversion response');
+        throw new Error(data.error || 'Invalid API response');
       }
     } catch (err) {
-      console.error(err);
       setError('Failed to convert currency. Please try again.');
       setConvertedAmount(null);
     } finally {
       setLoading(false);
     }
-  }, [amount, fromCurrency, toCurrency, BASE_URL, API_KEY]);
+  }, [amount, fromCurrency, toCurrency, API_KEY]);
 
-  // 📈 Historical fetch (uses exchangerate.host as you originally had)
+  // Historical fetch for trends
   const fetchHistoricalData = useCallback(async () => {
     setLoading(true);
     try {
@@ -70,73 +89,92 @@ export default function ConversionPage() {
       const startDate = new Date();
       startDate.setDate(endDate.getDate() - 30);
 
-      const url = `https://api.exchangerate.host/timeseries?base=${fromCurrency}&symbols=${toCurrency}&start_date=${startDate.toISOString().split('T')[0]}&end_date=${endDate.toISOString().split('T')[0]}`;
-      const response = await fetch(url);
-      const data = await response.json();
+      const startStr = startDate.toISOString().split('T')[0];
+      const endStr = endDate.toISOString().split('T')[0];
 
-      if (data.success && data.rates) {
-        const labels = Object.keys(data.rates);
-        const values = labels.map(date => data.rates[date][toCurrency]);
-        setChartData({
-          labels,
-          datasets: [{
-            label: `${fromCurrency} to ${toCurrency} Exchange Rate`,
-            data: values,
-            borderColor: '#3b82f6',
-            backgroundColor: 'rgba(59, 130, 246, 0.2)',
-            tension: 0.4
-          }]
-        });
-        setError(null);
-      } else {
-        throw new Error('Invalid historical data response');
-      }
+      const url = `https://api.frankfurter.app/${startStr}..${endStr}?from=${trendFrom}&to=${trendTo}`;
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+      const data = await response.json();
+      const rates = data.rates;
+
+      const labels = Object.keys(rates).sort();
+      const values = labels.map(date => rates[date][trendTo]);
+
+      setChartData({
+        labels,
+        datasets: [{
+          label: `${trendFrom} to ${trendTo} Exchange Rate`,
+          data: values,
+          borderColor: '#3b82f6',
+          backgroundColor: 'rgba(59, 130, 246, 0.2)',
+          tension: 0.4
+        }]
+      });
+      setError(null);
     } catch (err) {
-      console.error(err);
-      setError('Failed to load historical data');
+      setError('Failed to load historical data.');
       setChartData(null);
     } finally {
       setLoading(false);
     }
-  }, [fromCurrency, toCurrency]);
+  }, [trendFrom, trendTo]);
 
-  // 🔄 Trigger fetches based on tab
+  // Fetch on tab change or conversion/trends change
   useEffect(() => {
     if (activeTab === 'convert') {
       fetchConversion();
-    } else {
+    } else if (activeTab === 'trends' && frankfurterCurrencies.length > 0) {
       fetchHistoricalData();
     }
-  }, [activeTab, fetchConversion, fetchHistoricalData]);
+  }, [activeTab, fetchConversion, fetchHistoricalData, frankfurterCurrencies.length]);
 
-  // 🧠 JSX return block (same as before)
+  // Fetch chart when trend currencies change
+  useEffect(() => {
+    if (activeTab === 'trends' && frankfurterCurrencies.length > 0) {
+      fetchHistoricalData();
+    }
+  }, [trendFrom, trendTo, fetchHistoricalData, activeTab, frankfurterCurrencies.length]);
+
   return (
     <div className="min-h-screen flex flex-col bg-gradient-to-b from-black via-gray-900 to-gray-800">
       <Header>
-        <button
-          className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition ${activeTab === 'convert' ? 'bg-blue-900 text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-          onClick={() => setActiveTab('convert')}
-        >
-          <FaExchangeAlt />
-          Convert
-        </button>
-        <button
-          className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition ${activeTab === 'trends' ? 'bg-blue-900 text-white shadow' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'}`}
-          onClick={() => setActiveTab('trends')}
-        >
-          <FaChartLine />
-          See Trends
-        </button>
+        <GradientButton to="/">Home</GradientButton>
+        <GradientButton to="/about">About Us</GradientButton>
       </Header>
-
       <main className="flex-grow flex flex-col items-center justify-center px-6 py-8">
         <div className="w-full max-w-4xl">
           <div className="bg-white rounded-2xl shadow-lg p-8">
+            <div className="flex justify-center gap-4 mb-8 items-center">
+              <button
+                className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition ${
+                  activeTab === 'convert' 
+                    ? 'bg-blue-900 text-white shadow' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+                onClick={() => setActiveTab('convert')}
+              >
+                <FaExchangeAlt />
+                Convert
+              </button>
+              <button
+                className={`flex items-center gap-2 px-6 py-3 rounded-lg font-semibold transition ${
+                  activeTab === 'trends' 
+                    ? 'bg-blue-900 text-white shadow' 
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                }`}
+                onClick={() => setActiveTab('trends')}
+              >
+                <FaChartLine />
+                See Trends
+              </button>
+            </div>
             {activeTab === 'convert' ? (
               <div className="space-y-6">
                 <h2 className="text-xl font-bold text-center">Currency Converter</h2>
                 <div className="flex flex-col md:flex-row gap-4 items-center">
-                  <div className="flex-1 w-full">
+                  <div className="flex-1 w-full min-w-0 max-w-[220px]">
                     <label className="block text-gray-600 mb-1">Amount</label>
                     <input
                       type="number"
@@ -146,35 +184,18 @@ export default function ConversionPage() {
                       min="0"
                     />
                   </div>
-                  <div className="flex-1 w-full">
+                  <div className="flex-1 w-full min-w-0 max-w-[320px]">
                     <label className="block text-gray-600 mb-1">From</label>
-                    <select
-                      value={fromCurrency}
-                      onChange={(e) => setFromCurrency(e.target.value)}
-                      className="w-full border rounded-lg px-4 py-2 text-lg font-semibold"
-                    >
-                      {currencyCodes.map(code => (
-                        <option key={code} value={code}>{code}</option>
-                      ))}
-                    </select>
+                    <FlagDropdown value={fromCurrency} onChange={setFromCurrency} />
                   </div>
-                  <div className="flex-1 w-full">
+                  <div className="flex-1 w-full min-w-0 max-w-[320px]">
                     <label className="block text-gray-600 mb-1">To</label>
-                    <select
-                      value={toCurrency}
-                      onChange={(e) => setToCurrency(e.target.value)}
-                      className="w-full border rounded-lg px-4 py-2 text-lg font-semibold"
-                    >
-                      {currencyCodes.map(code => (
-                        <option key={code} value={code}>{code}</option>
-                      ))}
-                    </select>
+                    <FlagDropdown value={toCurrency} onChange={setToCurrency} />
                   </div>
                 </div>
-
-                {loading ? (
+                {loading && activeTab === 'convert' ? (
                   <p className="text-center text-gray-500">Converting...</p>
-                ) : error ? (
+                ) : error && activeTab === 'convert' ? (
                   <p className="text-center text-red-500">{error}</p>
                 ) : (
                   convertedAmount !== null && (
@@ -187,9 +208,35 @@ export default function ConversionPage() {
             ) : (
               <div className="space-y-6">
                 <h2 className="text-xl font-bold text-center">30-Day Exchange Rate Trend</h2>
-                {loading ? (
+                <div className="flex flex-col md:flex-row gap-4 items-center justify-center">
+                  <div>
+                    <label className="block text-gray-600 mb-1">From</label>
+                    <select
+                      value={trendFrom}
+                      onChange={(e) => setTrendFrom(e.target.value)}
+                      className="border rounded-lg px-4 py-2 bg-white"
+                    >
+                      {frankfurterCurrencies.map(code => (
+                        <option key={code} value={code}>{code}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-gray-600 mb-1">To</label>
+                    <select
+                      value={trendTo}
+                      onChange={(e) => setTrendTo(e.target.value)}
+                      className="border rounded-lg px-4 py-2 bg-white"
+                    >
+                      {frankfurterCurrencies.map(code => (
+                        <option key={code} value={code}>{code}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+                {loading && activeTab === 'trends' ? (
                   <p className="text-center text-gray-500">Loading chart...</p>
-                ) : error ? (
+                ) : error && activeTab === 'trends' ? (
                   <p className="text-center text-red-500">{error}</p>
                 ) : chartData ? (
                   <div className="h-96">
@@ -199,18 +246,13 @@ export default function ConversionPage() {
                         responsive: true,
                         maintainAspectRatio: false,
                         plugins: {
-                          legend: {
-                            position: 'top',
-                          },
+                          legend: { position: 'top' }
                         },
                         scales: {
                           y: {
-                            title: {
-                              display: true,
-                              text: 'Exchange Rate',
-                            },
-                          },
-                        },
+                            title: { display: true, text: 'Exchange Rate' }
+                          }
+                        }
                       }}
                     />
                   </div>
@@ -222,7 +264,6 @@ export default function ConversionPage() {
           </div>
         </div>
       </main>
-
       <Footer />
     </div>
   );
