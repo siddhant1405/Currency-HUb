@@ -62,7 +62,7 @@ export default function ConversionPage() {
       if (!response.ok) throw new Error(`API error: ${response.status}`);
       const data = await response.json();
 
-      if (data.result === 'success' && data.conversion_rates) {
+      if (data.result === 'success' && data.conversion_rates) { 
         const rate = data.conversion_rates[toCurrency];
         if (rate) {
           setConvertedAmount(rate * amount);
