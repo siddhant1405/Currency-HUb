@@ -2,28 +2,12 @@ import React from 'react';
 import { TypeAnimation } from 'react-type-animation';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import './HeroAnimations.css'; // Import CSS for dollar animations
+
 
 export default function HeroSection() {
   return (
     <section className="relative flex flex-col items-center justify-center flex-grow min-h-[70vh] bg-gradient-to-b from-black via-gray-900 to-gray-800 text-center overflow-hidden">
 
-            {/* Floating currency icons */}
-      {[...Array(40)].map((_, i) => {
-        const currencies = ['$', '₹', '¥', '€', '£'];
-        const symbol = currencies[i % currencies.length];
-        const left = Math.random() * 100;
-
-        return (
-          <span
-            key={i}
-            className={`dollar-icon animation-delay-${i % 20}`} // match with delay classes in CSS
-            style={{ left: `${left}%` }}
-          >
-            {symbol}
-          </span>
-        );
-      })}
 
       {/* Heading */}
       <motion.h1
