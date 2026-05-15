@@ -18,6 +18,7 @@ import { FaExchangeAlt, FaChartLine } from "react-icons/fa";
 ChartJS.register(CategoryScale, LinearScale, LineElement, PointElement, Tooltip, Legend);
 
 export default function ConversionPage() {
+  const frankfurterProxyBase = "/.netlify/functions/frankfurter";
   const [activeTab, setActiveTab] = useState("convert");
 
   // Conversion section states
@@ -40,7 +41,7 @@ export default function ConversionPage() {
 
   // Fetch currency list
   useEffect(() => {
-    fetch("https://api.frankfurter.app/currencies")
+    fetch(`${frankfurterProxyBase}?endpoint=currencies`)
       .then((res) => res.json())
       .then((data) => {
         const codes = Object.keys(data);
@@ -95,7 +96,7 @@ export default function ConversionPage() {
       const startStr = startDate.toISOString().split("T")[0];
       const endStr = endDate.toISOString().split("T")[0];
 
-      const url = `https://api.frankfurter.app/${startStr}..${endStr}?from=${trendFrom}&to=${trendTo}`;
+      const url = `${frankfurterProxyBase}?endpoint=${startStr}..${endStr}&from=${trendFrom}&to=${trendTo}`;
       const response = await fetch(url);
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
@@ -124,7 +125,7 @@ export default function ConversionPage() {
     } finally {
       setLoading(false);
     }
-  }, [trendFrom, trendTo]);
+  }, [frankfurterProxyBase, trendFrom, trendTo]);
 
   // Trigger fetch when tab or relevant data changes
   useEffect(() => {
